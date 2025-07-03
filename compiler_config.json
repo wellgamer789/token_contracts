@@ -1,0 +1,15 @@
+{
+    "language": "Solidity",
+    "settings": {
+        "viaIR": true,
+        "optimizer": {
+            "enabled": true,
+            "runs": 25000
+        },
+        "outputSelection": {
+            "*": {
+                "*": [ "*" ]
+            }
+        }
+    }
+}
