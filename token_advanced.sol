@@ -2,8 +2,8 @@
 Name (symbol) - t.me/templatename
 */
 
-// SPDX-License-Identifier: none
-pragma solidity 0.8.23;
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.24;
 
 abstract contract Auth {
     event authorizationsChange(address wallet, bool onlyAuthorized);
@@ -53,7 +53,7 @@ abstract contract Auth {
     }
     
     function transferOwnership(address newOwner) external onlyOwner {
-        // We can't forget to remove the authorization
+        // Remove the authorization
         authorizations[owner] = false;
         emit authorizationsChange(owner, false);
 
@@ -64,10 +64,11 @@ abstract contract Auth {
     }
 
     function renounceOwnership() external onlyOwner {
-        owner = address(0);
         authorizations[owner] = false;
-        emit OwnershipTransferred(owner);
         emit authorizationsChange(owner, false);
+
+        owner = address(0);
+        emit OwnershipTransferred(address(0));
     }
 }
 
@@ -150,11 +151,12 @@ contract DeployWithLiquidity {
     }
 
     // If something out of the ordinary happens, remember that this function does not refer to the deployed token
-	function depoyerRescueEther() external {
+    function deployerRescueEther() external {
         deployer.transfer(address(this).balance - 3);
     }
 }
 
+// github.com/wellgamer789/token_contracts
 contract Template is Auth {
     event Transfer(address indexed from, address indexed to, uint256 amount);
     event Approval(address indexed owner, address indexed spender, uint256 amount);
@@ -228,9 +230,9 @@ contract Template is Auth {
 
         if (dexVersion == 2) {
             contractSwapEnabled = true;
-            _createNewPool(wrapped, 2, 0);
+            mainPool = _createNewPool(wrapped, 2, 0);
         } else if (dexVersion == 3) {
-            _createNewPool(wrapped, 3, mainPoolFee);
+            mainPool = _createNewPool(wrapped, 3, mainPoolFee);
         }
 
         allowance[address(this)][router] = type(uint256).max;
@@ -397,11 +399,11 @@ contract Template is Auth {
     }
 
     function adjustFees(uint256 newFee) external onlyAuthorized {
-        require(newFee < feeDenominator / 80, "projectFee must be less than 8%");
+        require(newFee < feeDenominator * 8 / 100, "projectFee must be less than 8%");
         projectFee = newFee;
     }
 
-    function setFeeReceivers(address newReceiver) external payable onlyAuthorized {
+    function setFeeReceivers(address newReceiver) external onlyAuthorized {
         // This is to prevent a malicious dev from turning it into a honeypot
         // by adding an address referring to a malicious contract.
         require(newReceiver.code.length == 0, "ONLY_WALLET_ADDRESS");
@@ -410,7 +412,7 @@ contract Template is Auth {
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    ///////////////////////////////////////////////// CONTRCT SWAP ////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////// CONTRACT SWAP ////////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     struct ExactInputSingleParams {
@@ -426,7 +428,7 @@ contract Template is Auth {
 
     function swapBack(address pool, uint24 poolFee, uint256 contractAmountSwap) internal swapping {
         address[] memory path;
-        bool sucess;
+        bool success;
 
         if (pool == mainPool) {
             // [THIS_TOKEN -> WRAPPED]
@@ -453,7 +455,7 @@ contract Template is Auth {
 
         if (poolFee > 0) {
             // V3
-            (sucess, ) = router.call(
+            (success, ) = router.call(
                 // exactInputSingle(ExactInputSingleParams calldata params)
                 abi.encodeWithSelector(
                     0x414bf389,
@@ -471,7 +473,7 @@ contract Template is Auth {
             );
         } else {
             // V2
-            (sucess, ) = router.call(
+            (success, ) = router.call(
                 // swapExactTokensForETHSupportingFeeOnTransferTokens(uint256, uint256, address[], address, uint256)
                 abi.encodeWithSelector(
                     0x791ac947,
@@ -483,9 +485,8 @@ contract Template is Auth {
                 )
             );
         }
-        // It is not necessary to check the result of the contrat swap,
-        // because this is not a reason to revert a swap transaction,
-        // since this would make it possible to turn the contract into a honeypot.
+        // It is not necessary to check the result of the contract swap,
+        // because this is not a reason to revert a swap transaction.
 
         swapThreshold = (contractAmountSwap == smallSwapThreshold)
             ? largeSwapThreshold
@@ -512,21 +513,23 @@ contract Template is Auth {
         mainPoolFee = newPoolFee;
     }
 
-    function createNewPool(address token, uint256 dexVersion, uint24 poolFee) external onlyAuthorized {
-        _createNewPool(token, dexVersion, poolFee);
+    function createNewPool(address token, uint256 dexVersion, uint24 poolFee) external onlyAuthorized returns (address) {
+        return _createNewPool(token, dexVersion, poolFee);
     }
 
-    function _createNewPool(address token, uint256 dexVersion, uint24 poolFee) internal {
+    function _createNewPool(address token, uint256 dexVersion, uint24 poolFee) internal returns (address) {
         address newPool;
 
         if (dexVersion == 2) {
             newPool = Factory(factory).createPair(token, address(this));
         } else if (dexVersion == 3) {
             newPool = Factory(factory).createPool(token, address(this), poolFee);
-        }
+        } else revert("Unsupported dex");
 
         isPool[newPool] = true;
         pools.push(newPool);
+
+        return newPool;
     }
 
     function setNewPool(address newPool) external onlyAuthorized {
@@ -549,7 +552,7 @@ contract Template is Auth {
         isPool[pool] = false;
     }
 
-    function showPoolList() external view returns(address[] memory){
+    function showPoolList() external view returns (address[] memory){
         return pools;
     }
 
@@ -559,12 +562,12 @@ contract Template is Auth {
 
     function rescueToken(address token, uint256 amount) external {
         // Make it impossible to withdraw the token itself from this contract
-        require(token != address(this), "STOP"); 
+        require(token != address(this), "STOP");
 
         ERC20(token).transfer(feeReceiver, amount);
     }
 
-	function rescueEther() external {
+    function rescueEther() external {
         feeReceiver.transfer(address(this).balance - 3);
     }
     
@@ -589,7 +592,7 @@ contract Template is Auth {
                 chainFactory = 0x1F98431c8aD98523631AE4a59f267346ea31F984;     // UniswapV3 Factory
                 chainRouter = 0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45;      // UniswapV3 Router
                 chainPoolManager = 0xC36442b4a4522E871399CD717aBDD847Ab11FE88; // UniswapV3 PositionManager
-            }
+            } else revert("Unsupported dex");
         } else if (block.chainid == 56) {
             // BSC Mainnet
             chainWrapped = 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c; // WBNB
@@ -601,19 +604,26 @@ contract Template is Auth {
                 chainFactory = 0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865;     // PancakeSwapV3 Factory
                 chainRouter = 0x1b81D678ffb9C0263b24A97847620C99d213eB14;      // PancakeSwapV3 Router
                 chainPoolManager = 0x46A15B0b27311cedF172AB29E4f4766fbE7F4364; // PancakeSwapV3 PositionManager
-            }
+            } else revert("Unsupported dex");
         } else revert("Unsupported chain");
 
         return (chainWrapped, chainFactory, chainRouter, chainPoolManager);
     }
 
-    function getTickSpacing(uint24 fee) internal pure returns (int24) {
-        if (fee == 100)    return 1;    // 0.01%
-        if (fee == 500)    return 10;   // 0.05%
-        if (fee == 2500)   return 50;   // 0.25%
-        if (fee == 3000)   return 60;   // 0.30%
-        if (fee == 10000)  return 200;  // 1.00%
-        revert("Fee not supported");
+    function getTickSpacing(uint24 fee) internal pure returns (int24 tickSpacing) {
+        assembly {
+            switch fee
+            case 100 { tickSpacing := 1 }     // 0.01%
+            case 500 { tickSpacing := 10 }    // 0.05%
+            case 1000 { tickSpacing := 20 }   // 0.10%
+            case 2500 { tickSpacing := 50 }   // 0.25%
+            case 3000 { tickSpacing := 60 }   // 0.30%
+            case 5000 { tickSpacing := 100 }  // 0.50%
+            case 10000 { tickSpacing := 200 } // 1.00%
+            default { tickSpacing := 0 }
+        }
+
+        if (tickSpacing == 0) revert("Fee not supported");
     }
 
     function addLiquidityETH(uint256 dexVersion, uint256 tokenAmount, uint24 poolFee) external payable {
@@ -629,6 +639,8 @@ contract Template is Auth {
                 block.timestamp
             );
         } else if (dexVersion == 3) {
+            require(msg.value > 0, "NO_ETH");
+
             (address token0, address token1, uint256 amount0, uint256 amount1) = (wrapped < address(this))
                 ? (wrapped, address(this), msg.value, tokenAmount)
                 : (address(this), wrapped, tokenAmount, msg.value);

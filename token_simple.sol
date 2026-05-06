@@ -2,9 +2,10 @@
 Name (symbol) - t.me/templatename
 */
 
-// SPDX-License-Identifier: none
-pragma solidity 0.8.23;
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.24;
 
+// github.com/wellgamer789/token_contracts
 contract TEST {
     event Transfer(address indexed from, address indexed to, uint256 amount);
     event Approval(address indexed owner, address indexed spender, uint256 amount);
