@@ -9,9 +9,12 @@ abstract contract Auth {
     event authorizationsChange(address wallet, bool onlyAuthorized);
     event OwnershipTransferred(address owner);
 
+    error NotOwner();
+    error NotAuthorized();
+
     address public owner;
     mapping (address => bool) internal authorizations;
-    
+
     constructor(address _owner) {
         owner = _owner;
         authorizations[owner] = true;
@@ -20,12 +23,12 @@ abstract contract Auth {
     }
 
     modifier onlyOwner() {
-        require(msg.sender == owner, "!OWNER");
+        if (msg.sender != owner) revert NotOwner();
         _;
     }
 
     modifier onlyAuthorized() {
-        require(authorizations[msg.sender] == true, "!AUTHORIZED");
+        if (!authorizations[msg.sender]) revert NotAuthorized();
         _;
     }
 
@@ -196,9 +199,9 @@ contract Template is Auth {
     address immutable public poolManager; // V3
     address immutable public factory;
     address immutable public router;
-    uint256 private launchedAt;
+    bool private launched;
 
-    // Contract swap does not work in v3 or v4
+    // Contract swap does not work in V3 or V4
     bool public contractSwapEnabled = false; 
     bool internal inContractSwap;
 
@@ -229,8 +232,8 @@ contract Template is Auth {
         isLimitExempt[ZERO] = true;
 
         if (dexVersion == 2) {
-            contractSwapEnabled = true;
             mainPool = _createNewPool(wrapped, 2, 0);
+            contractSwapEnabled = true;
         } else if (dexVersion == 3) {
             mainPool = _createNewPool(wrapped, 3, mainPoolFee);
         }
@@ -247,10 +250,8 @@ contract Template is Auth {
             isLimitExempt[poolManager] = true;
         }
 
-        unchecked {
-            balanceOf[deployer] += totalSupply;
-            emit Transfer(address(0), deployer, totalSupply);
-        }
+        balanceOf[deployer] = totalSupply;
+        emit Transfer(address(0), deployer, totalSupply);
     }
 
     receive() external payable {}
@@ -299,10 +300,10 @@ contract Template is Auth {
         bool recipientIsPool = isPool[recipient];
         bool senderIsPool = isPool[sender];
 
-        if (launchedAt == 0 && recipientIsPool) {
+        if (!launched && recipientIsPool) {
             // First addLiquidity
-            require(isAuthorized(tx.origin), "!AUTH");
-            launchedAt = block.number; // Enable trade
+            if (!isAuthorized(tx.origin)) revert NotAuthorized();
+            launched = true;
         }
 
         if (recipientIsPool && contractSwapEnabled && !inContractSwap) {
@@ -540,13 +541,15 @@ contract Template is Auth {
     function removePool(address pool) external onlyAuthorized {
         uint256 poolsLen = pools.length;
         
-        for (uint256 i = 0; i < poolsLen; i++) {
+        for (uint256 i = 0; i < poolsLen; ) {
             if (pools[i] == pool) {
                 pools[i] = pools[poolsLen-1];
                 pools.pop();
 
                 break;
             }
+
+            unchecked { ++i; }
         }
 
         isPool[pool] = false;

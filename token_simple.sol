@@ -23,10 +23,8 @@ contract TEST {
     mapping (address => mapping(address => uint256)) public allowance;
 
     constructor() {
-        unchecked {
-            balanceOf[msg.sender] = totalSupply;
-            emit Transfer(address(0), msg.sender, totalSupply);
-        }
+        balanceOf[msg.sender] = totalSupply;
+        emit Transfer(address(0), msg.sender, totalSupply);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
